@@ -42,137 +42,17 @@ export const initDatabase = async () => {
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(defaultUser));
     }
 
-    // Initialize habits if empty
+    // Initialize habits if empty - no default habits
     const habits = await getStoredData(HABITS_KEY);
-    if (habits.length === 0) {
-      const defaultHabits = [
-        {
-          id: '1',
-          naam: 'Water drinken',
-          beschrijving: 'Dagelijks voldoende water drinken',
-          frequentie: 'Dagelijks',
-          streak: 5,
-          laatst_voltooid: new Date().toISOString().split('T')[0],
-          strafpunten_bij_falen: 1
-        },
-        {
-          id: '2',
-          naam: 'Sporten',
-          beschrijving: 'Dagelijks bewegen en sporten',
-          frequentie: 'Dagelijks',
-          streak: 12,
-          laatst_voltooid: null,
-          strafpunten_bij_falen: 2
-        },
-        {
-          id: '3',
-          naam: 'Lezen',
-          beschrijving: 'Dagelijks lezen voor persoonlijke ontwikkeling',
-          frequentie: 'Dagelijks',
-          streak: 3,
-          laatst_voltooid: new Date().toISOString().split('T')[0],
-          strafpunten_bij_falen: 1
-        },
-        {
-          id: '4',
-          naam: 'Mediteren',
-          beschrijving: 'Dagelijkse meditatie voor mindfulness',
-          frequentie: 'Dagelijks',
-          streak: 8,
-          laatst_voltooid: new Date().toISOString().split('T')[0],
-          strafpunten_bij_falen: 1
-        }
-      ];
-      await setStoredData(HABITS_KEY, defaultHabits);
-    }
+    // Habits will be added through the weekly setup screen
 
-    // Initialize tasks if empty
+    // Initialize tasks if empty - no default tasks
     const tasks = await getStoredData(TASKS_KEY);
-    if (tasks.length === 0) {
-      const defaultTasks = [
-        {
-          id: '1',
-          naam: 'Homepage ontwerpen',
-          beschrijving: 'Lay-out maken voor de homepage',
-          deadline: null,
-          voltooid: false,
-          datum_voltooid: null
-        },
-        {
-          id: '2',
-          naam: 'Documentatie schrijven',
-          beschrijving: 'API endpoints documenteren',
-          deadline: '2024-04-25',
-          voltooid: false,
-          datum_voltooid: null
-        },
-        {
-          id: '3',
-          naam: 'Gebruikersflow maken',
-          beschrijving: 'De gebruikersflow in kaart brengen',
-          deadline: '2024-04-25',
-          voltooid: false,
-          datum_voltooid: null
-        },
-        {
-          id: '4',
-          naam: 'Dependencies updaten',
-          beschrijving: 'Upgraden naar de nieuwste packages',
-          deadline: '2024-04-30',
-          voltooid: false,
-          datum_voltooid: null
-        }
-      ];
-      await setStoredData(TASKS_KEY, defaultTasks);
-    }
+    // Tasks will be added through the weekly setup screen
 
-    // Initialize goals if empty
+    // Initialize goals if empty - no default goals
     const goals = await getStoredData(GOALS_KEY);
-    if (goals.length === 0) {
-      const defaultGoals = [
-        {
-          id: '1',
-          naam: 'Regelmatig sporten',
-          beschrijving: 'Minimaal 3x per week sporten',
-          deadline: '2024-05-05',
-          voortgang: 80,
-          voltooid: false,
-          datum_voltooid: null,
-          deadline_locked: true
-        },
-        {
-          id: '2',
-          naam: 'Meer boeken lezen',
-          beschrijving: 'Dit jaar 12 boeken lezen',
-          deadline: '2024-06-10',
-          voortgang: 25,
-          voltooid: false,
-          datum_voltooid: null,
-          deadline_locked: true
-        },
-        {
-          id: '3',
-          naam: 'Sparen voor vakantie',
-          beschrijving: 'Geld sparen voor zomervakantie',
-          deadline: '2024-04-28',
-          voortgang: 60,
-          voltooid: false,
-          datum_voltooid: null,
-          deadline_locked: true
-        },
-        {
-          id: '4',
-          naam: 'Nieuwe taal leren',
-          beschrijving: 'Basis Spaans leren',
-          deadline: '2024-09-20',
-          voortgang: 10,
-          voltooid: false,
-          datum_voltooid: null,
-          deadline_locked: true
-        }
-      ];
-      await setStoredData(GOALS_KEY, defaultGoals);
-    }
+    // Goals will be managed through the weekly setup system
   } catch (error) {
     console.error('Database initialization error:', error);
   }
@@ -203,13 +83,32 @@ export const habitOperations = {
     
     if (habitIndex !== -1) {
       const today = new Date().toISOString().split('T')[0];
+      const wasCompleted = habits[habitIndex].laatst_voltooid === today;
       
-      if (completed) {
+      if (completed && !wasCompleted) {
+        // Completing habit
         habits[habitIndex].laatst_voltooid = today;
         habits[habitIndex].streak += 1;
-      } else {
+        
+        // Award XP
+        const { xpOperations, XP_VALUES } = require('./xpSystem');
+        let xpToAdd = XP_VALUES.HABIT_COMPLETION;
+        
+        // Bonus XP for streaks
+        if (habits[habitIndex].streak > 0 && habits[habitIndex].streak % 7 === 0) {
+          xpToAdd += XP_VALUES.STREAK_BONUS;
+        }
+        
+        await xpOperations.addXP(xpToAdd, 'habit_completion');
+        
+      } else if (!completed && wasCompleted) {
+        // Uncompleting habit
         habits[habitIndex].laatst_voltooid = null;
-        habits[habitIndex].streak = 0;
+        habits[habitIndex].streak = Math.max(0, habits[habitIndex].streak - 1);
+        
+        // Remove XP (negative XP)
+        const { xpOperations, XP_VALUES } = require('./xpSystem');
+        await xpOperations.addXP(-XP_VALUES.HABIT_COMPLETION, 'habit_uncompletion');
       }
       
       await setStoredData(HABITS_KEY, habits);
@@ -247,8 +146,20 @@ export const taskOperations = {
     const taskIndex = tasks.findIndex(t => t.id === taskId);
     
     if (taskIndex !== -1) {
+      const wasCompleted = tasks[taskIndex].voltooid;
+      
       tasks[taskIndex].voltooid = completed;
       tasks[taskIndex].datum_voltooid = completed ? new Date().toISOString().split('T')[0] : null;
+      
+      // Award/remove XP
+      if (completed && !wasCompleted) {
+        const { xpOperations, XP_VALUES } = require('./xpSystem');
+        await xpOperations.addXP(XP_VALUES.TASK_COMPLETION, 'task_completion');
+      } else if (!completed && wasCompleted) {
+        const { xpOperations, XP_VALUES } = require('./xpSystem');
+        await xpOperations.addXP(-XP_VALUES.TASK_COMPLETION, 'task_uncompletion');
+      }
+      
       await setStoredData(TASKS_KEY, tasks);
     }
   },

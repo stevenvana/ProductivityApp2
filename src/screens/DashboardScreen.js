@@ -1,87 +1,157 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { habitOperations, initDatabase } from '../database/asyncStorage';
+import XPDisplay from '../components/XPDisplay';
+import LevelUpModal from '../components/LevelUpModal';
+import NotificationService from '../services/NotificationService';
 
 export default function DashboardScreen() {
+  const [habits, setHabits] = useState([]);
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+  const [newLevel, setNewLevel] = useState(1);
+
+  useEffect(() => {
+    initializeDatabase();
+    initializeNotifications();
+  }, []);
+
+  const initializeNotifications = async () => {
+    try {
+      await NotificationService.initialize();
+      await NotificationService.setupNotificationCategories();
+    } catch (error) {
+      console.error('Error initializing notifications:', error);
+    }
+  };
+
+  const initializeDatabase = async () => {
+    try {
+      await initDatabase();
+      loadHabits();
+    } catch (error) {
+      console.error('Database initialization error:', error);
+    }
+  };
+
+  const loadHabits = async () => {
+    try {
+      const habitsData = await habitOperations.getAll();
+      setHabits(habitsData);
+    } catch (error) {
+      console.error('Error loading habits:', error);
+    }
+  };
+
+  const handleToggleHabit = async (habitId, currentStatus) => {
+    try {
+      await habitOperations.updateCompletion(habitId, !currentStatus);
+      
+      // Check for level up
+      const { xpOperations } = require('../database/xpSystem');
+      const result = await xpOperations.get();
+      if (result && result.leveledUp) {
+        setNewLevel(result.level);
+        setShowLevelUpModal(true);
+        // Schedule level up notification
+        await NotificationService.scheduleLevelUpNotification(result.level);
+      }
+      
+      // Check for streak milestone and schedule celebration
+      if (!currentStatus) { // If we're completing the habit
+        const updatedHabits = await habitOperations.getAll();
+        const updatedHabit = updatedHabits.find(h => h.id === habitId);
+        if (updatedHabit && updatedHabit.streak > 0 && updatedHabit.streak % 7 === 0) {
+          await NotificationService.scheduleStreakCelebration(updatedHabit);
+        }
+      }
+      
+      loadHabits();
+    } catch (error) {
+      console.error('Error updating habit:', error);
+      Alert.alert('Fout', 'Kon gewoonte niet bijwerken');
+    }
+  };
+
+  const isHabitCompletedToday = (habit) => {
+    const today = new Date().toISOString().split('T')[0];
+    return habit.laatst_voltooid === today;
+  };
+
+  const renderHabit = (habit) => {
+    const completed = isHabitCompletedToday(habit);
+    return (
+      <View key={habit.id} style={styles.habitItem}>
+        <TouchableOpacity
+          style={[
+            styles.checkbox,
+            { backgroundColor: completed ? '#4CAF50' : '#FFFFFF' }
+          ]}
+          onPress={() => handleToggleHabit(habit.id, completed)}
+        >
+          {completed && <Text style={styles.checkmark}>✓</Text>}
+        </TouchableOpacity>
+        <View style={styles.habitInfo}>
+          <Text style={[styles.habitName, completed && styles.completedText]}>
+            {habit.naam}
+          </Text>
+          {habit.beschrijving ? (
+            <Text style={[styles.habitDescription, completed && styles.completedText]}>
+              {habit.beschrijving}
+            </Text>
+          ) : null}
+          <Text style={styles.habitStreak}>Streak: {habit.streak} dagen</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const completedCount = habits.filter(habit => isHabitCompletedToday(habit)).length;
+  const totalCount = habits.length;
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
-        {/* Progress Overview */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Voortgangsoverzicht</Text>
-          <View style={styles.progressContainer}>
-            <View style={styles.progressCircle}>
-              <Text style={styles.progressText}>72%</Text>
-            </View>
-            <Text style={styles.progressLabel}>Dagelijkse Voltooiing</Text>
+        {/* XP Display */}
+        <XPDisplay />
+
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Dagelijkse Gewoontes</Text>
+          <Text style={styles.progressText}>
+            {completedCount} van {totalCount} voltooid
+          </Text>
+        </View>
+
+        {/* Progress Bar */}
+        <View style={styles.progressBarContainer}>
+          <View style={styles.progressBar}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { width: totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : '0%' }
+              ]} 
+            />
           </View>
         </View>
 
-        {/* Today's Overview */}
+        {/* Habits List */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Vandaag's Overzicht</Text>
-          
-          <View style={styles.taskItem}>
-            <View style={styles.taskInfo}>
-              <Text style={styles.taskTitle}>Mediteren</Text>
-              <Text style={styles.taskDescription}>Voor 10 minuten</Text>
+          {habits.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Geen gewoontes gevonden</Text>
+              <Text style={styles.emptySubtext}>Ga naar het Gewoontes tabblad om gewoontes toe te voegen</Text>
             </View>
-            <TouchableOpacity style={styles.completeButton}>
-              <Text style={styles.buttonText}>Voltooid</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.taskItem}>
-            <View style={styles.taskInfo}>
-              <Text style={styles.taskTitle}>Lezen</Text>
-              <Text style={styles.taskDescription}>50 pagina's van een boek</Text>
-            </View>
-            <TouchableOpacity style={styles.completeButton}>
-              <Text style={styles.buttonText}>Voltooid</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.taskItem}>
-            <View style={styles.taskInfo}>
-              <Text style={styles.taskTitle}>Rapport afmaken</Text>
-              <Text style={styles.taskDescription}>Product by quarterly tragos</Text>
-            </View>
-            <TouchableOpacity style={styles.completeButton}>
-              <Text style={styles.buttonText}>Voltooid</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Goal Progress */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Doel Voortgang</Text>
-          
-          <View style={styles.goalItem}>
-            <View style={styles.goalInfo}>
-              <Text style={styles.goalTitle}>Marathon lopen</Text>
-              <Text style={styles.goalDeadline}>Deadline: 15 december</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '60%' }]} />
-            </View>
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Snelle Acties</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.quickActionButton}>
-              <Text style={styles.quickActionText}>Nieuwe Gewoonte</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionButton}>
-              <Text style={styles.quickActionText}>Nieuwe Taak</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.quickActionButton}>
-              <Text style={styles.quickActionText}>Nieuw Doel</Text>
-            </TouchableOpacity>
-          </View>
+          ) : (
+            habits.map(renderHabit)
+          )}
         </View>
       </View>
+      
+      <LevelUpModal 
+        visible={showLevelUpModal}
+        level={newLevel}
+        onClose={() => setShowLevelUpModal(false)}
+      />
     </ScrollView>
   );
 }
@@ -94,7 +164,7 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
   },
-  section: {
+  header: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     padding: 16,
@@ -108,82 +178,18 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  sectionTitle: {
-    fontSize: 18,
+  headerTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#424242',
-    marginBottom: 12,
-  },
-  progressContainer: {
-    alignItems: 'center',
-  },
-  progressCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 8,
-    borderColor: '#4CAF50',
-    borderTopColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: 8,
   },
   progressText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-  },
-  progressLabel: {
-    fontSize: 14,
-    color: '#757575',
-  },
-  taskItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
-  },
-  taskInfo: {
-    flex: 1,
-  },
-  taskTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#424242',
-  },
-  taskDescription: {
-    fontSize: 14,
     color: '#757575',
-    marginTop: 2,
   },
-  completeButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  goalItem: {
-    paddingVertical: 12,
-  },
-  goalInfo: {
-    marginBottom: 8,
-  },
-  goalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#424242',
-  },
-  goalDeadline: {
-    fontSize: 14,
-    color: '#757575',
-    marginTop: 2,
+  progressBarContainer: {
+    marginBottom: 16,
   },
   progressBar: {
     height: 8,
@@ -195,22 +201,75 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#4CAF50',
   },
-  quickActions: {
+  section: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  habitItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
   },
-  quickActionButton: {
-    backgroundColor: '#2196F3',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 6,
-    flex: 1,
-    marginHorizontal: 4,
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  quickActionText: {
+  checkmark: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  habitInfo: {
+    flex: 1,
+  },
+  habitName: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#424242',
+    marginBottom: 2,
+  },
+  habitDescription: {
+    fontSize: 14,
+    color: '#757575',
+    marginBottom: 2,
+  },
+  habitStreak: {
+    fontSize: 12,
+    color: '#9E9E9E',
+  },
+  completedText: {
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#757575',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9E9E9E',
     textAlign: 'center',
   },
 });

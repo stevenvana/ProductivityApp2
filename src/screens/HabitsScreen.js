@@ -6,10 +6,9 @@ export default function HabitsScreen() {
   const [habits, setHabits] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
-    naam: '',
-    beschrijving: '',
-    frequentie: 'Dagelijks',
-    strafpunten_bij_falen: '0'
+    naam: "",
+    beschrijving: "",
+    frequentie: "Dagelijks"
   });
 
   useEffect(() => {
@@ -44,18 +43,15 @@ export default function HabitsScreen() {
       const habit = {
         naam: formData.naam.trim(),
         beschrijving: formData.beschrijving.trim(),
-        frequentie: formData.frequentie,
-        strafpunten_bij_falen: parseInt(formData.strafpunten_bij_falen) || 0
+        frequentie: formData.frequentie
       };
 
       await habitOperations.create(habit);
       loadHabits();
       setShowForm(false);
-      setFormData({
-        naam: '',
-        beschrijving: '',
-        frequentie: 'Dagelijks',
-        strafpunten_bij_falen: '0'
+      setFormData({        naam: "",
+        beschrijving: "",
+        frequentie: "Dagelijks"
       });
       Alert.alert('Succes', 'Gewoonte toegevoegd!');
     } catch (error) {
@@ -145,13 +141,7 @@ export default function HabitsScreen() {
           ))}
         </View>
       </View>
-      <TextInput
-        style={styles.input}
-        placeholder="Strafpunten bij falen (0-10)"
-        value={formData.strafpunten_bij_falen}
-        onChangeText={(text) => setFormData({...formData, strafpunten_bij_falen: text})}
-        keyboardType="numeric"
-      />
+
       <View style={styles.formButtons}>
         <TouchableOpacity 
           style={styles.cancelButton} 
